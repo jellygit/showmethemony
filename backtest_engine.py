@@ -11,11 +11,13 @@ from portfolio_manager import (
     execute_default_rebalancing,
     get_active_target_weights
 )
+# [수정] print 함수가 없는 버전으로 임포트
 from reporting import calculate_mdd, calculate_rolling_returns
 
 def run_backtest(params: dict):
     """파라미터를 받아 백테스트를 실행하고 모든 결과를 딕셔너리로 반환합니다."""
     
+    # ... (함수 앞부분은 이전과 동일) ...
     strategy = params['strategy']
     start_date = params['start_date']
     end_date = params['end_date']
@@ -107,9 +109,11 @@ def run_backtest(params: dict):
     numeric_df["Portfolio Value"] = numeric_df[value_columns].sum(axis=1) + numeric_df["Cash"]
     numeric_df['ROI'] = (numeric_df['Portfolio Value'] - numeric_df['Total Investment']) / numeric_df['Total Investment']
     
+    # --- [수정] 요약 지표 계산 ---
     summary_mdd = calculate_mdd(numeric_df)
     summary_rolling = calculate_rolling_returns(numeric_df, params['rolling_window'], params['rolling_step']) if params['rolling_window'] else None
 
+    # --- [수정] 최종 JSON 구조화 ---
     final_results = []
     for date, row in numeric_df.iterrows():
         assets_data = {t: {"holdings": row[f"{t} Holdings"], "price": row[f"{t} Price"], "value": row[f"{t} Value"], "weight": row[f"{t} Weight"]} for t in all_tickers}

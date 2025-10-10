@@ -1,6 +1,7 @@
 # reporting.py
 import pandas as pd
 import numpy as np
+from config import TICKER_NAMES
 
 def calculate_mdd(numeric_df):
     """포트폴리오의 최대 낙폭(MDD)을 계산하여 딕셔너리로 반환합니다."""
@@ -22,8 +23,9 @@ def calculate_mdd(numeric_df):
     }
 
 def calculate_rolling_returns(numeric_df, window_years, step_freq):
-    """롤링 리턴을 계산하여 딕셔너리로 반환합니다."""
+    """[수정] 롤링 리턴을 계산하여 딕셔너리로 반환합니다."""
     portfolio_values = numeric_df['Portfolio Value']
+    
     freq_map = {'Y': 'YE', 'A': 'YE', 'Q': 'QE', 'M': 'ME'}
     base_freq = ''.join(filter(str.isalpha, step_freq))
     if base_freq in freq_map:
@@ -56,7 +58,9 @@ def calculate_rolling_returns(numeric_df, window_years, step_freq):
         return None
 
     return {
-        "average_cagr": np.mean(cagrs), "min_cagr": np.min(cagrs),
-        "max_cagr": np.max(cagrs), "stdev_cagr": np.std(cagrs),
+        "average_cagr": np.mean(cagrs),
+        "min_cagr": np.min(cagrs),
+        "max_cagr": np.max(cagrs),
+        "stdev_cagr": np.std(cagrs),
         "periods": periods
     }
