@@ -4,13 +4,18 @@ import pandas as pd
 from config import STRATEGY_ASSETS, BUY_COMMISSION_RATE
 from data_handler import load_data, prepare_strategy_data
 from strategies import decide_haa_portfolio, decide_daa_portfolio, decide_laa_portfolio
-from portfolio_manager import execute_rebalancing, evaluate_portfolio_state, execute_periodic_buy, get_active_target_weights
+from portfolio_manager import (
+    execute_rebalancing, 
+    evaluate_portfolio_state, 
+    execute_periodic_buy, 
+    execute_default_rebalancing,
+    get_active_target_weights
+)
 from reporting import calculate_mdd, calculate_rolling_returns
 
 def run_backtest(params: dict):
     """파라미터를 받아 백테스트를 실행하고 모든 결과를 딕셔너리로 반환합니다."""
     
-    # --- 1. 파라미터 추출 및 설정 ---
     strategy = params['strategy']
     start_date = params['start_date']
     end_date = params['end_date']
@@ -29,11 +34,12 @@ def run_backtest(params: dict):
         all_tickers = set.union(*[set(v) for v in assets.values()])
         original_target_weights = {}
 
-    # --- 2. 데이터 준비 ---
     stock_data = load_data(db_path, all_tickers, start_date)
+    if stock_data.empty:
+        raise ValueError(f"DB에 요청하신 기간에 해당하는 데이터가 없습니다. Tickers: {list(all_tickers)}")
+
     monthly_prices, momentum_data, daily_data = prepare_strategy_data(stock_data)
 
-    # --- 3. 시뮬레이션 기간 설정 ---
     sim_start_date = pd.to_datetime(start_date)
     sim_end_date = pd.to_datetime(end_date) if end_date else monthly_prices.index[-1]
     
@@ -42,7 +48,6 @@ def run_backtest(params: dict):
     evaluation_dates = monthly_prices.index[sorted(list(set(date_indices)))]
     evaluation_dates = evaluation_dates[(evaluation_dates >= sim_start_date) & (evaluation_dates <= sim_end_date)]
 
-    # --- 4. 시뮬레이션 실행 ---
     cash = capital
     holdings = {ticker: 0 for ticker in all_tickers}
     total_investment = capital
@@ -50,7 +55,7 @@ def run_backtest(params: dict):
     logs = []
 
     for i, date in enumerate(evaluation_dates):
-        logs.append({"date": date.strftime('%Y-%m-%d'), "type": "EVALUATION_START"})
+        logs.append({"date": date.strftime('%Y-%m-%d'), "type": "EVALUATION_START", "message": f"평가일: {date.strftime('%Y-%m-%d')}"})
         
         if i > 0 and params['periodic_investment'] > 0:
             cash += params['periodic_investment']
@@ -80,7 +85,7 @@ def run_backtest(params: dict):
                             total_cost = base_cost + commission
                             if cash >= total_cost:
                                 holdings[ticker], cash = shares, cash - total_cost
-                                logs.append({"date": date.strftime('%Y-%m-%d'), "type": "TRANSACTION", "action": "BUY", "ticker": ticker, "shares": shares, "price": price, "amount": base_cost, "fee": commission})
+                                logs.append({"date": date.strftime('%Y-%m-%d'), "type": "TRANSACTION", "action": "INITIAL_BUY", "ticker": ticker, "shares": shares, "price": price, "amount": base_cost, "fee": commission})
             else:
                 if strategy == 'default' and no_rebalance:
                     holdings, cash = execute_periodic_buy(holdings.copy(), cash, original_target_weights, current_prices, logs)
@@ -91,9 +96,8 @@ def run_backtest(params: dict):
         eval_result['Total Investment'] = total_investment
         results.append(eval_result)
         
-    # --- 5. 최종 결과 집계 ---
     if not results:
-        return {"error": "시뮬레이션 결과가 없습니다."}
+        raise ValueError("시뮬레이션 결과가 없습니다.")
 
     numeric_df = pd.DataFrame(results).fillna(0)
     numeric_df['Date'] = pd.to_datetime(numeric_df['Date'])
@@ -103,20 +107,15 @@ def run_backtest(params: dict):
     numeric_df["Portfolio Value"] = numeric_df[value_columns].sum(axis=1) + numeric_df["Cash"]
     numeric_df['ROI'] = (numeric_df['Portfolio Value'] - numeric_df['Total Investment']) / numeric_df['Total Investment']
     
-    # 요약 지표 계산
     summary_mdd = calculate_mdd(numeric_df)
     summary_rolling = calculate_rolling_returns(numeric_df, params['rolling_window'], params['rolling_step']) if params['rolling_window'] else None
 
-    # 최종 JSON 구조화
     final_results = []
     for date, row in numeric_df.iterrows():
         assets_data = {t: {"holdings": row[f"{t} Holdings"], "price": row[f"{t} Price"], "value": row[f"{t} Value"], "weight": row[f"{t} Weight"]} for t in all_tickers}
         final_results.append({
-            "date": date.strftime('%Y-%m-%d'),
-            "portfolio_value": row["Portfolio Value"],
-            "total_investment": row["Total Investment"],
-            "roi": row["ROI"],
-            "cash": row["Cash"],
+            "date": date.strftime('%Y-%m-%d'), "portfolio_value": row["Portfolio Value"],
+            "total_investment": row["Total Investment"], "roi": row["ROI"], "cash": row["Cash"],
             "assets": assets_data
         })
     
@@ -129,7 +128,7 @@ def run_backtest(params: dict):
         }
     }
 
-    final_json = {
+    return {
         "summary": {
             "final_portfolio_value": numeric_df["Portfolio Value"].iloc[-1],
             "total_investment": numeric_df["Total Investment"].iloc[-1],
@@ -137,9 +136,5 @@ def run_backtest(params: dict):
             "mdd": summary_mdd,
             "rolling_returns": summary_rolling
         },
-        "logs": logs,
-        "results": final_results,
-        "chart_data": chart_data
+        "logs": logs, "results": final_results, "chart_data": chart_data
     }
-    
-    return final_json

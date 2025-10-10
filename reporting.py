@@ -3,11 +3,13 @@ import pandas as pd
 import numpy as np
 
 def calculate_mdd(numeric_df):
-    """포트폴리오의 최대 낙폭(MDD)을 계산하여 딕셔셔리로 반환합니다."""
+    """포트폴리오의 최대 낙폭(MDD)을 계산하여 딕셔너리로 반환합니다."""
     portfolio_values = numeric_df['Portfolio Value']
     running_peak = portfolio_values.cummax()
     drawdown = (portfolio_values - running_peak) / running_peak
     mdd = drawdown.min()
+    if pd.isna(mdd): return {}
+    
     trough_date = drawdown.idxmin()
     peak_date = running_peak.loc[:trough_date][running_peak.loc[:trough_date] == running_peak.loc[trough_date]].index[0]
     
@@ -54,9 +56,7 @@ def calculate_rolling_returns(numeric_df, window_years, step_freq):
         return None
 
     return {
-        "average_cagr": np.mean(cagrs),
-        "min_cagr": np.min(cagrs),
-        "max_cagr": np.max(cagrs),
-        "stdev_cagr": np.std(cagrs),
+        "average_cagr": np.mean(cagrs), "min_cagr": np.min(cagrs),
+        "max_cagr": np.max(cagrs), "stdev_cagr": np.std(cagrs),
         "periods": periods
     }

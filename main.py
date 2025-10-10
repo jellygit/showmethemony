@@ -1,5 +1,5 @@
-# main_api.py
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query
+# main.py
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -23,7 +23,7 @@ class BacktestParams(BaseModel):
 app = FastAPI()
 
 # --- CORS 설정 ---
-origins = ["*"] # 개발 중에는 모든 출처 허용
+origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -49,46 +49,28 @@ def run_backtest_endpoint(params: BacktestParams):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- [신규] 종목 검색 API 엔드포인트 ---
 @app.get("/search-symbols")
 def search_symbols(
     db_path: str = "stock_price.db", 
     q: str = Query(..., min_length=1, description="검색할 종목명 (부분 일치)")
 ):
-    """
-    지정된 DB의 여러 테이블에서 종목명(Name)을 검색하여 Symbol과 Name을 반환합니다.
-    """
-    # 검색할 테이블 목록 (init_data_gemini.py의 sanitize_table_name 규칙과 동일하게)
-    tables_to_search = ['KRX', 'NYSE', 'NASDAQ', 'ETF_US', 'ETF_KR'] 
-    
+    """지정된 DB의 여러 테이블에서 종목명(Name)을 검색하여 Symbol과 Name을 반환합니다."""
+    tables_to_search = ['KRX', 'NYSE', 'NASDAQ', 'ETF_US', 'ETF_KR']
     all_results = []
-    
     try:
         with sqlite3.connect(db_path) as con:
             cursor = con.cursor()
             for table in tables_to_search:
                 try:
-                    # SQL Injection을 방지하기 위해 테이블 이름에 따옴표를 사용
-                    # 대소문자 구분 없이 검색하기 위해 LOWER() 함수 사용
                     query_sql = f'SELECT Symbol, Name FROM "{table}" WHERE LOWER(Name) LIKE ?'
-                    
-                    # LIKE 검색을 위한 파라미터 생성 (예: 'samsung' -> '%samsung%')
                     search_term = f"%{q.lower()}%"
-                    
                     cursor.execute(query_sql, (search_term,))
                     results = cursor.fetchall()
-                    
                     for row in results:
                         all_results.append({"Symbol": row[0], "Name": row[1]})
-                
                 except sqlite3.OperationalError:
-                    # 해당 테이블이 DB에 존재하지 않으면 조용히 건너뜀
                     continue
-                    
-        # 중복된 결과가 있을 경우 제거 (예: 여러 테이블에 같은 Symbol이 있는 경우)
         unique_results = [dict(t) for t in {tuple(d.items()) for d in all_results}]
-        
         return unique_results
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"데이터베이스 검색 중 오류 발생: {str(e)}")
