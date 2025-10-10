@@ -40,7 +40,6 @@ def read_root():
 def run_backtest_endpoint(params: BacktestParams):
     """
     백테스트 시뮬레이션을 실행하고 결과를 JSON으로 반환합니다.
-    (주의: 실제 서비스에서는 이 부분을 Celery와 같은 Task Queue로 비동기 처리해야 합니다.)
     """
     try:
         params_dict = params.dict()
@@ -52,25 +51,38 @@ def run_backtest_endpoint(params: BacktestParams):
 @app.get("/search-symbols")
 def search_symbols(
     db_path: str = "stock_price.db", 
-    q: str = Query(..., min_length=1, description="검색할 종목명 (부분 일치)")
+    q: str = Query(..., min_length=1, description="검색할 종목명 또는 심볼 (부분 일치)")
 ):
-    """지정된 DB의 여러 테이블에서 종목명(Name)을 검색하여 Symbol과 Name을 반환합니다."""
-    tables_to_search = ['KRX', 'NYSE', 'NASDAQ', 'ETF_US', 'ETF_KR']
+    """
+    [수정] 지정된 DB의 여러 테이블에서 종목명(Name)과 심볼(Symbol)을 검색하여 반환합니다.
+    """
+    tables_to_search = ['KRX', 'NYSE', 'NASDAQ', 'ETF_US', 'ETF_KR'] 
     all_results = []
+    
     try:
         with sqlite3.connect(db_path) as con:
             cursor = con.cursor()
             for table in tables_to_search:
                 try:
-                    query_sql = f'SELECT Symbol, Name FROM "{table}" WHERE LOWER(Name) LIKE ?'
+                    # [수정] WHERE 절에 'LOWER(Symbol) LIKE ?' 조건을 OR로 추가
+                    query_sql = f'SELECT Symbol, Name FROM "{table}" WHERE LOWER(Name) LIKE ? OR LOWER(Symbol) LIKE ?'
+                    
                     search_term = f"%{q.lower()}%"
-                    cursor.execute(query_sql, (search_term,))
+                    
+                    # [수정] 파라미터를 2개 전달
+                    cursor.execute(query_sql, (search_term, search_term))
                     results = cursor.fetchall()
+                    
                     for row in results:
                         all_results.append({"Symbol": row[0], "Name": row[1]})
+                
                 except sqlite3.OperationalError:
                     continue
+                    
         unique_results = [dict(t) for t in {tuple(d.items()) for d in all_results}]
-        return unique_results
+        
+        # 이름순으로 정렬하여 반환
+        return sorted(unique_results, key=lambda x: x['Name'])
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"데이터베이스 검색 중 오류 발생: {str(e)}")
