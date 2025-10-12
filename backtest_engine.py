@@ -23,6 +23,7 @@ def run_backtest(params: dict):
     capital = params['capital']
     stocks = params['stocks']
     no_rebalance = params['no_rebalance']
+    no_drip = params['no_drip']
     interval = params['interval']
     
     if strategy == 'default':
@@ -88,7 +89,10 @@ def run_backtest(params: dict):
                     if not period_dividends.empty:
                         for div_date, div_per_share in period_dividends.items():
                             dividend_income = ( div_per_share * shares ) * 0.846
-                            cash += dividend_income
+                            if no_drip:
+                                cash += 0
+                            else:
+                                cash += dividend_income
                             logs.append({"date": div_date.strftime('%Y-%m-%d'), "type": "DIVIDEND", "ticker": ticker, "amount": dividend_income})
 
         if i > 0 and params['periodic_investment'] > 0:

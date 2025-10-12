@@ -16,6 +16,7 @@ class BacktestParams(BaseModel):
     interval: str = Field("1M", example="3M", description="리밸런싱 주기")
     periodic_investment: float = Field(0.0, example=1000, description="주기별 추가 투자금")
     no_rebalance: bool = Field(False, description="[기본 전략용] 리밸런싱 없이 추가 매수만 진행")
+    no_drip: bool = Field(False, description="배당금 재투자 하지 않음, 출금하여 사용했다고 가정")
     stocks: Optional[List[str]] = Field(None, example=["SPY", "0.6", "AGG", "0.4"], description="[기본 전략용] 티커와 비중 목록")
     rolling_window: Optional[int] = Field(None, example=3, description="롤링 리턴 기간 (단위: 연)")
     rolling_step: str = Field("1Y", example="1Q", description="롤링 리턴 계산 빈도")
