@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi[standard]>=0.118.2",
+    "finance-datareader>=0.9.96",
     "numpy>=2.3.3",
+    "odfpy>=1.4.1",
     "pandas>=2.3.3",
     "uvicorn[standard]>=0.37.0",
+    "yfinance>=0.2.66",
 ]

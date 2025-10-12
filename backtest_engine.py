@@ -2,7 +2,7 @@
 import sys
 import pandas as pd
 from config import STRATEGY_ASSETS, BUY_COMMISSION_RATE
-from data_handler import load_data, prepare_strategy_data
+from data_handler import load_data, prepare_strategy_data, load_dividends_data
 from strategies import decide_haa_portfolio, decide_daa_portfolio, decide_laa_portfolio
 from portfolio_manager import (
     execute_rebalancing, 
@@ -36,6 +36,14 @@ def run_backtest(params: dict):
         original_target_weights = {}
 
     stock_data = load_data(db_path, all_tickers, start_date)
+    # [추가] 배당 데이터 로딩
+    dividends_data = load_dividends_data(db_path, all_tickers)
+
+    if stock_data.empty:
+        raise ValueError(f"DB에 요청하신 기간에 해당하는 데이터가 없습니다. Tickers: {list(all_tickers)}")
+
+    monthly_prices, momentum_data, daily_data = prepare_strategy_data(stock_data)
+
     if stock_data.empty:
         raise ValueError(f"DB에 요청하신 기간에 해당하는 데이터가 없습니다. Tickers: {list(all_tickers)}")
 
@@ -66,6 +74,28 @@ def run_backtest(params: dict):
     for i, date in enumerate(evaluation_dates):
         logs.append({"date": date.strftime('%Y-%m-%d'), "type": "EVALUATION_START", "message": f"평가일: {date.strftime('%Y-%m-%d')}"})
         
+        last_eval_date = evaluation_dates[i-1] if i > 0 else pd.Timestamp(start_date)
+
+        # [추가] 배당금 수령 로직
+        if i > 0:
+            for ticker, shares in holdings.items():
+                if shares > 0 and ticker in dividends_data:
+                    # 지난 평가일과 현재 평가일 사이의 배당 내역을 찾음
+                    period_dividends = dividends_data[ticker][
+                        (dividends_data[ticker].index > last_eval_date) & 
+                        (dividends_data[ticker].index <= date)
+                    ]
+                    if not period_dividends.empty:
+                        for div_date, div_per_share in period_dividends.items():
+                            dividend_income = ( div_per_share * shares ) * 0.846
+                            cash += dividend_income
+                            logs.append({"date": div_date.strftime('%Y-%m-%d'), "type": "DIVIDEND", "ticker": ticker, "amount": dividend_income})
+
+        if i > 0 and params['periodic_investment'] > 0:
+            cash += params['periodic_investment']
+            total_investment += params['periodic_investment']
+            logs.append({"date": date.strftime('%Y-%m-%d'), "type": "DEPOSIT", "amount": params['periodic_investment']})
+            
         if i > 0 and params['periodic_investment'] > 0:
             cash += params['periodic_investment']
             total_investment += params['periodic_investment']

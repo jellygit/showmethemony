@@ -57,3 +57,31 @@ def prepare_strategy_data(stock_data):
         daily_data["sma_200_day"] = stock_data["SPY"].rolling(window=200).mean()
 
     return monthly_prices, momentum_data, daily_data
+
+def load_dividends_data(db_path, tickers):
+    """[신규] DB에서 지정된 티커들의 배당 정보를 불러옵니다."""
+    print("배당 정보 로딩 중...")
+    dividends_by_ticker = {}
+    try:
+        with sqlite3.connect(db_path) as con:
+            placeholders = ", ".join("?" for _ in tickers)
+            query = f"SELECT Symbol, Date, Dividend FROM stock_dividends WHERE Symbol IN ({placeholders}) ORDER BY Date"
+            df = pd.read_sql_query(query, con, params=list(tickers))
+
+            if df.empty:
+                print("경고: DB에서 배당 정보를 찾을 수 없습니다.")
+                return {}
+
+            df['Date'] = pd.to_datetime(df['Date'])
+            
+            # 각 티커별로 데이터를 그룹화하여 딕셔너리에 저장
+            for symbol, group in df.groupby('Symbol'):
+                # 날짜를 인덱스로, 배당금을 값으로 하는 Series 생성
+                dividends_by_ticker[symbol] = group.set_index('Date')['Dividend']
+            
+            print("배당 정보 로딩 완료.")
+            return dividends_by_ticker
+
+    except Exception as e:
+        print(f"배당 정보 로딩 중 오류 발생: {e}", file=sys.stderr)
+        return {}
