@@ -100,11 +100,6 @@ def run_backtest(params: dict):
             total_investment += params['periodic_investment']
             logs.append({"date": date.strftime('%Y-%m-%d'), "type": "DEPOSIT", "amount": params['periodic_investment']})
             
-        if i > 0 and params['periodic_investment'] > 0:
-            cash += params['periodic_investment']
-            total_investment += params['periodic_investment']
-            logs.append({"date": date.strftime('%Y-%m-%d'), "type": "DEPOSIT", "amount": params['periodic_investment']})
-            
         current_prices = stock_data.loc[date]
         
         decision_date = monthly_prices.index.asof(date)
