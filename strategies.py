@@ -40,17 +40,18 @@ def decide_daa_portfolio(date, momentum_data):
 
 
 def decide_laa_portfolio(date, current_prices, daily_data):
-    """LAA 규칙에 따라 목표 포트폴리오를 결정합니다."""
+    """LAA (Lethargic Asset Allocation) 전략에 따라 목표 포트폴리오를 결정합니다."""
     assets = STRATEGY_ASSETS["laa"]
-    spy_price = current_prices.get("SPY")
-    spy_sma_200 = daily_data["sma_200_day"].asof(date)
-
-    if pd.isna(spy_price) or pd.isna(spy_sma_200):
-        return {}
-
     target_portfolio = {ticker: 0.25 for ticker in assets["core"]}
 
-    if spy_price > spy_sma_200:
+    spy_price = current_prices.get("SPY")
+    # daily_data["sma_200_day"]는 Series이므로 .get(date) 또는 .loc[date] 사용
+    spy_sma = daily_data["sma_200_day"].get(date)
+
+    if pd.isna(spy_price) or pd.isna(spy_sma):
+        return {}
+
+    if spy_price > spy_sma:
         target_portfolio[assets["offensive"][0]] = 0.25
     else:
         target_portfolio[assets["defensive"][0]] = 0.25

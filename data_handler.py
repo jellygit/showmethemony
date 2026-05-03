@@ -15,7 +15,7 @@ def load_data(db_path, tickers, start_date_str, history_months=13):
 
         with sqlite3.connect(db_path) as con:
             placeholders = ", ".join("?" for _ in tickers)
-            query = f"SELECT Date, Symbol, Close FROM stock_price WHERE Symbol IN ({placeholders}) AND Date >= ? ORDER BY Date"
+            query = f"SELECT Date, Symbol, Close FROM stock_prices WHERE Symbol IN ({placeholders}) AND Date >= ? ORDER BY Date"
             df = pd.read_sql_query(
                 query,
                 con,
@@ -31,7 +31,7 @@ def load_data(db_path, tickers, start_date_str, history_months=13):
             pivot_df = pivot_df.ffill()
             return pivot_df
     except Exception as e:
-        sys.exit(f"데이터 로딩 중 오류 발생: {e}")
+        raise ValueError(f"데이터 로딩 중 오류 발생: {e}")
 
 
 def prepare_strategy_data(stock_data):

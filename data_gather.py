@@ -70,7 +70,7 @@ def fetch_price_data(symbol_info, start_date):
         pass
     return None
 
-def update_prices(market, db_path, start_year):
+def update_prices(market, db_path, start_year, delay=0):
     """멀티스레딩으로 종목별 시세 데이터를 업데이트합니다."""
     print(f"[{market}] 시세 데이터 업데이트 시작 (시작 연도: {start_year})...")
     table_name = sanitize_table_name(market)
@@ -83,7 +83,10 @@ def update_prices(market, db_path, start_year):
 
     start_date = f"{start_year}-01-01"
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(fetch_price_data, s, start_date): s for s in symbols}
+        futures = {}
+        for s in symbols:
+            futures[executor.submit(fetch_price_data, s, start_date)] = s
+            if delay > 0: time.sleep(delay)
         
         # [수정] tqdm을 사용하여 진행률 표시
         for future in tqdm(as_completed(futures), total=len(symbols), desc=f"시세 수집 ({market})"):
@@ -103,7 +106,16 @@ def update_prices(market, db_path, start_year):
                         
                         price_df = price_df[required_cols].copy()
                         price_df['Date'] = price_df['Date'].dt.strftime('%Y-%m-%d')
-                        price_df.to_sql('stock_prices', conn_thread, if_exists='append', index=False)
+                        
+                        # 중복 방지를 위해 INSERT OR IGNORE 처리 (IntegrityError 대신 명시적 처리)
+                        for _, row in price_df.iterrows():
+                            try:
+                                conn_thread.execute(
+                                    'INSERT OR IGNORE INTO stock_prices (Symbol, Date, Open, High, Low, Close, Volume, Change) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                                    (row['Symbol'], row['Date'], row['Open'], row['High'], row['Low'], row['Close'], row['Volume'], row['Change'])
+                                )
+                            except Exception:
+                                pass
                 except sqlite3.IntegrityError:
                     continue
                 except Exception as e:
@@ -127,7 +139,7 @@ def fetch_dividend_data(symbol_info):
         pass
     return None
 
-def update_dividends(market, db_path):
+def update_dividends(market, db_path, delay=0):
     """멀티스레딩으로 종목별 배당 데이터를 업데이트합니다."""
     print(f"[{market}] 배당 데이터 업데이트 시작...")
     table_name = sanitize_table_name(market)
@@ -139,7 +151,10 @@ def update_dividends(market, db_path):
          return
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(fetch_dividend_data, s): s for s in symbols}
+        futures = {}
+        for s in symbols:
+            futures[executor.submit(fetch_dividend_data, s)] = s
+            if delay > 0: time.sleep(delay)
         
         # [수정] tqdm을 사용하여 진행률 표시
         for future in tqdm(as_completed(futures), total=len(symbols), desc=f"배당 수집 ({market})"):
@@ -148,7 +163,13 @@ def update_dividends(market, db_path):
                 try:
                     with sqlite3.connect(DB_PATH) as conn_thread:
                         dividend_df['Date'] = dividend_df['Date'].dt.strftime('%Y-%m-%d')
-                        dividend_df[['Symbol', 'Date', 'Dividend']].to_sql('stock_dividends', conn_thread, if_exists='append', index=False)
+                        cur = conn_thread.cursor()
+                        for _, row in dividend_df.iterrows():
+                            cur.execute(
+                                'INSERT OR IGNORE INTO stock_dividends (Symbol, Date, Dividend) VALUES (?, ?, ?)',
+                                (row['Symbol'], row['Date'], row['Dividend'])
+                            )
+                        conn_thread.commit()
                 except sqlite3.IntegrityError:
                     continue
                 except Exception as e:
@@ -164,6 +185,7 @@ def main():
     parser.add_argument("--update-prices", action='store_true', help="시세 데이터를 추가합니다.")
     parser.add_argument("--update-dividends", action='store_true', help="배당 데이터를 추가합니다.")
     parser.add_argument("--start-year", type=int, default=2000, help="시세 데이터를 받아올 시작 연도")
+    parser.add_argument("--delay", type=float, default=0.0, help="요청 간 지연 시간 (초, 예: 0.1은 약 10it/s)")
     args = parser.parse_args()
 
     if not any([args.update_symbols, args.update_prices, args.update_dividends]):
@@ -178,9 +200,9 @@ def main():
             if args.update_symbols:
                 update_symbols(market, DB_PATH)
             if args.update_prices:
-                update_prices(market, DB_PATH, args.start_year)
+                update_prices(market, DB_PATH, args.start_year, args.delay)
             if args.update_dividends:
-                update_dividends(market, DB_PATH)
+                update_dividends(market, DB_PATH, args.delay)
             print(f"===== '{market}' 거래소 작업 완료 =====\n")
         end_time = time.time()
         print(f"총 소요 시간: {end_time - start_time:.2f}초")
