@@ -57,3 +57,65 @@ def decide_laa_portfolio(date, current_prices, daily_data):
         target_portfolio[assets["defensive"][0]] = 0.25
 
     return target_portfolio
+
+
+def decide_turtle_portfolio(date, current_prices, state_tracker, portfolio_value, turtle_data):
+    """
+    터틀 매매 전략에 따라 목표 포트폴리오 비중을 결정합니다.
+    - 진입: 20일 고점 돌파 시 1유닛
+    - 피라미딩: 마지막 진입가 + 0.5N 상승 시 1유닛 추가 (최대 5유닛)
+    - 청산: 10일 저점 이탈 시 전량 매도
+    - 손절: 마지막 진입가 - 2N 하락 시 전량 매도
+    - 1유닛 사이즈 = (포트폴리오 가치 * 0.02) / ATR(N)
+    """
+    target_portfolio = {}
+    risk_factor = 0.02  # 2% Risk per Unit
+    max_units = 5
+
+    for ticker in current_prices.index:
+        price = current_prices.get(ticker)
+        if pd.isna(price) or price <= 0:
+            continue
+
+        n = turtle_data["atr_20"].loc[date, ticker]
+        high_20 = turtle_data["high_20"].loc[date, ticker]
+        low_10 = turtle_data["low_10"].loc[date, ticker]
+
+        if pd.isna(n) or pd.isna(high_20) or pd.isna(low_10) or n <= 0:
+            continue
+
+        state = state_tracker.get(ticker, {"units": 0, "entry_price": 0, "last_unit_price": 0})
+        units = state["units"]
+        last_price = state["last_unit_price"]
+
+        # 1. 포지션 보유 중인 경우 (청산/손절/피라미딩 체크)
+        if units > 0:
+            # 손절: 마지막 진입가 대비 2N 하락
+            # 청산: 10일 저점 이탈
+            if price <= (last_price - 2 * n) or price < low_10:
+                target_portfolio[ticker] = 0.0
+                continue
+
+            # 피라미딩: 0.5N 상승 시 추가 매수 (최대 5유닛)
+            if units < max_units and price >= (last_price + 0.5 * n):
+                new_units = units + 1
+                # 새로운 목표 비중 계산: (유닛 수 * 1유닛당 주식 수 * 현재가) / 총자산
+                # 1유닛 주식 수 = (PortfolioValue * 0.02) / N
+                unit_shares = (portfolio_value * risk_factor) / n
+                target_weight = (new_units * unit_shares * price) / portfolio_value
+                target_portfolio[ticker] = target_weight
+            else:
+                # 유지 (현재 유닛 상태 유지하는 비중 계산)
+                unit_shares = (portfolio_value * risk_factor) / n
+                target_weight = (units * unit_shares * price) / portfolio_value
+                target_portfolio[ticker] = target_weight
+
+        # 2. 포지션 미보유 중인 경우 (진입 체크)
+        else:
+            if price > high_20:
+                # 1유닛 진입
+                unit_shares = (portfolio_value * risk_factor) / n
+                target_weight = (1 * unit_shares * price) / portfolio_value
+                target_portfolio[ticker] = target_weight
+
+    return target_portfolio
