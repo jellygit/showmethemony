@@ -28,6 +28,10 @@ def init_db(db_path):
     """데이터베이스와 테이블 스키마를 생성합니다."""
     with sqlite3.connect(db_path) as con:
         cur = con.cursor()
+        # [Step 1] SQLite 성능 최적화 설정
+        cur.execute("PRAGMA journal_mode=WAL;")
+        cur.execute("PRAGMA synchronous=NORMAL;")
+        
         cur.execute("""
             CREATE TABLE IF NOT EXISTS stock_prices (
                 Symbol TEXT, Date TEXT, Open REAL, High REAL, Low REAL, Close REAL,

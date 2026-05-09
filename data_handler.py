@@ -15,6 +15,8 @@ def load_data(db_path, tickers, start_date_str, history_months=13):
         load_start_date = start_date - relativedelta(months=history_months)
 
         with sqlite3.connect(db_path) as con:
+            con.execute("PRAGMA journal_mode=WAL;")
+            con.execute("PRAGMA synchronous=NORMAL;")
             placeholders = ", ".join("?" for _ in tickers)
             query = f"SELECT Date, Symbol, High, Low, Close FROM stock_prices WHERE Symbol IN ({placeholders}) AND Date >= ? ORDER BY Date"
             df = pd.read_sql_query(
@@ -101,6 +103,8 @@ def load_dividends_data(db_path, tickers):
     dividends_by_ticker = {}
     try:
         with sqlite3.connect(db_path) as con:
+            con.execute("PRAGMA journal_mode=WAL;")
+            con.execute("PRAGMA synchronous=NORMAL;")
             placeholders = ", ".join("?" for _ in tickers)
             query = f"SELECT Symbol, Date, Dividend FROM stock_dividends WHERE Symbol IN ({placeholders}) ORDER BY Date"
             df = pd.read_sql_query(query, con, params=list(tickers))
@@ -138,6 +142,8 @@ def get_top_n_tickers_in_period(
 
     try:
         with sqlite3.connect(db_path) as con:
+            con.execute("PRAGMA journal_mode=WAL;")
+            con.execute("PRAGMA synchronous=NORMAL;")
             query = f"""
                 SELECT DISTINCT Symbol 
                 FROM (
@@ -166,6 +172,8 @@ def get_top_n_tickers_at_date(db_path, date, market="KRX", n=10):
 
     try:
         with sqlite3.connect(db_path) as con:
+            con.execute("PRAGMA journal_mode=WAL;")
+            con.execute("PRAGMA synchronous=NORMAL;")
             # 지정된 날짜와 가장 가까운 이전 날짜를 찾음
             query = f"SELECT Date FROM {table_name} WHERE Date <= ? ORDER BY Date DESC LIMIT 1"
             df_date = pd.read_sql_query(query, con, params=[date])
@@ -196,6 +204,8 @@ def get_ticker_names(db_path, tickers):
     tables = ["KRX", "NASDAQ", "NYSE", "ETF_KR", "ETF_US"]
     try:
         with sqlite3.connect(db_path) as con:
+            con.execute("PRAGMA journal_mode=WAL;")
+            con.execute("PRAGMA synchronous=NORMAL;")
             placeholders = ", ".join("?" for _ in tickers)
             for table in tables:
                 try:

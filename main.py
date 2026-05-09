@@ -62,6 +62,8 @@ def search_symbols(
     
     try:
         with sqlite3.connect(db_path) as con:
+            con.execute("PRAGMA journal_mode=WAL;")
+            con.execute("PRAGMA synchronous=NORMAL;")
             cursor = con.cursor()
             for table in tables_to_search:
                 try:
