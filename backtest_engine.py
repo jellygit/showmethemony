@@ -3,8 +3,9 @@ import sys
 
 import pandas as pd
 
-from config import BUY_COMMISSION_RATE, STRATEGY_ASSETS
+from config import BUY_COMMISSION_RATE, STRATEGY_ASSETS, TICKER_NAMES
 from data_handler import (
+    get_ticker_names,
     get_top_n_tickers_at_date,
     get_top_n_tickers_in_period,
     load_data,
@@ -404,6 +405,11 @@ def run_backtest(params: dict):
         else None
     )
 
+    # [추가] 모든 티커의 종목명 맵핑 정보 생성
+    db_ticker_names = get_ticker_names(db_path, all_tickers)
+    # config의 TICKER_NAMES와 DB 조회 결과 병합 (DB 결과 우선)
+    ticker_name_map = {**TICKER_NAMES, **db_ticker_names}
+
     final_results = []
     for date, row in numeric_df.iterrows():
         assets_data = {
@@ -442,6 +448,7 @@ def run_backtest(params: dict):
             "final_roi": numeric_df["ROI"].iloc[-1],
             "mdd": summary_mdd,
             "rolling_returns": summary_rolling,
+            "ticker_names": ticker_name_map,
         },
         "logs": logs,
         "results": final_results,

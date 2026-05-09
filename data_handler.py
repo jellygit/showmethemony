@@ -185,3 +185,27 @@ def get_top_n_tickers_at_date(db_path, date, market="KRX", n=10):
     except Exception as e:
         print(f"특정 시점 상위 종목 조회 중 오류 발생: {e}", file=sys.stderr)
         return []
+
+
+def get_ticker_names(db_path, tickers):
+    """DB의 여러 테이블에서 티커 리스트에 해당하는 종목명을 조회하여 딕셔너리로 반환합니다."""
+    ticker_name_map = {}
+    if not tickers:
+        return ticker_name_map
+
+    tables = ["KRX", "NASDAQ", "NYSE", "ETF_KR", "ETF_US"]
+    try:
+        with sqlite3.connect(db_path) as con:
+            placeholders = ", ".join("?" for _ in tickers)
+            for table in tables:
+                try:
+                    query = f'SELECT Symbol, Name FROM "{table}" WHERE Symbol IN ({placeholders})'
+                    df = pd.read_sql_query(query, con, params=list(tickers))
+                    for _, row in df.iterrows():
+                        ticker_name_map[row["Symbol"]] = row["Name"]
+                except sqlite3.OperationalError:
+                    continue
+        return ticker_name_map
+    except Exception as e:
+        print(f"종목명 조회 중 오류 발생: {e}", file=sys.stderr)
+        return ticker_name_map
