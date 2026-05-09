@@ -5,6 +5,25 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import sqlite3
 import backtest_engine
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import asynccontextmanager
+
+# --- [Step 2] 비동기 프로세스 풀 설정 ---
+# 32코어 장비임을 고려하여, 메모리 집약적인 백테스트 특성에 따라 8개 프로세스 할당
+executor = ProcessPoolExecutor(max_workers=8)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 서버 시작 시 실행
+    yield
+    # 서버 종료 시 프로세스 풀 안전하게 정리
+    executor.shutdown()
+
+async def run_backtest_async(params_dict):
+    """CPU 집약적인 백테스트 연산을 프로세스 풀에서 실행"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, backtest_engine.run_backtest, params_dict)
 
 # --- API 요청 파라미터를 위한 Pydantic 모델 정의 ---
 class BacktestParams(BaseModel):
@@ -21,7 +40,7 @@ class BacktestParams(BaseModel):
     rolling_window: Optional[int] = Field(None, example=3, description="롤링 리턴 기간 (단위: 연)")
     rolling_step: str = Field("1Y", example="1Q", description="롤링 리턴 계산 빈도")
 
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 # --- CORS 설정 ---
 origins = ["*"]
@@ -38,13 +57,14 @@ def read_root():
     return {"message": "Portfolio Backtest API"}
 
 @app.post("/backtest")
-def run_backtest_endpoint(params: BacktestParams):
+async def run_backtest_endpoint(params: BacktestParams):
     """
-    백테스트 시뮬레이션을 실행하고 결과를 JSON으로 반환합니다.
+    [Step 2] 백테스트 시뮬레이션을 비동기 프로세스 풀에서 실행합니다.
     """
     try:
         params_dict = params.dict()
-        results = backtest_engine.run_backtest(params_dict)
+        # 프로세스 풀에서 연산 수행 (API 서버는 차단되지 않음)
+        results = await run_backtest_async(params_dict)
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -55,7 +75,7 @@ def search_symbols(
     q: str = Query(..., min_length=1, description="검색할 종목명 또는 심볼 (부분 일치)")
 ):
     """
-    [수정] 지정된 DB의 여러 테이블에서 종목명(Name)과 심볼(Symbol)을 검색하여 반환합니다.
+    지정된 DB의 여러 테이블에서 종목명(Name)과 심볼(Symbol)을 검색하여 반환합니다.
     """
     tables_to_search = ['KRX', 'NYSE', 'NASDAQ', 'ETF_US', 'ETF_KR'] 
     all_results = []
@@ -67,24 +87,16 @@ def search_symbols(
             cursor = con.cursor()
             for table in tables_to_search:
                 try:
-                    # [수정] WHERE 절에 'LOWER(Symbol) LIKE ?' 조건을 OR로 추가
                     query_sql = f'SELECT Symbol, Name FROM "{table}" WHERE LOWER(Name) LIKE ? OR LOWER(Symbol) LIKE ?'
-                    
                     search_term = f"%{q.lower()}%"
-                    
-                    # [수정] 파라미터를 2개 전달
                     cursor.execute(query_sql, (search_term, search_term))
                     results = cursor.fetchall()
-                    
                     for row in results:
                         all_results.append({"Symbol": row[0], "Name": row[1]})
-                
                 except sqlite3.OperationalError:
                     continue
                     
         unique_results = [dict(t) for t in {tuple(d.items()) for d in all_results}]
-        
-        # 이름순으로 정렬하여 반환
         return sorted(unique_results, key=lambda x: x['Name'])
 
     except Exception as e:
