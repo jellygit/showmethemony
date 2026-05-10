@@ -6,6 +6,7 @@
 """
 
 import argparse
+import logging
 import re
 import sqlite3
 import sys
@@ -16,6 +17,10 @@ from datetime import datetime
 import FinanceDataReader as fdr
 import pandas as pd
 import yfinance as yf
+
+# [추가] yfinance 로그 억제 설정
+logger = logging.getLogger("yfinance")
+logger.setLevel(logging.ERROR)
 
 # [추가] tqdm 라이브러리 임포트
 from tqdm import tqdm
@@ -193,10 +198,14 @@ def update_prices(market, db_path, start_year, delay=0):
 def fetch_dividend_data(symbol_info):
     """단일 종목의 배당 데이터를 yfinance로 가져옵니다."""
     original_symbol = symbol_info["Symbol"]
+    market = symbol_info.get("Market", "")
     
-    # 한국 종목(6자리 숫자)인 경우 .KS 접미사 추가
+    # 한국 종목(6자리 숫자)인 경우 시장별 접미사 추가
     if original_symbol.isdigit() and len(original_symbol) == 6:
-        query_symbol = f"{original_symbol}.KS"
+        if "KOSDAQ" in market:
+            query_symbol = f"{original_symbol}.KQ"
+        else:
+            query_symbol = f"{original_symbol}.KS"
     else:
         query_symbol = original_symbol.replace(".", "-")
 
